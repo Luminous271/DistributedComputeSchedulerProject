@@ -33,9 +33,20 @@ class RedisQueue:
     # The block is If there isn't a job right now, wait up to 5 seconds 
     # rather than constantly hammering Redis for messages. Blocking consumption.
     def consume(self, count: int = 1, block_ms: int = 5000):
+
         messages = self.client.xread(
             {self.STREAM_NAME: "0-0"},
             count=count,
             block=block_ms,
         )
         return messages
+
+    def save_job(self, job: Job) :
+        self.client.set(f"job:{job.id}", job.model_dump_json(),) # stores pydantic model as json
+
+    def get_job(self, job_id:str) -> Job | None:
+        data = self.client.get(f"job:{job_id}")
+        if data is None:
+            return None
+        # takes JSON data (the model JSON retrieved), parses it, validates it against Job model.
+        return Job.model_validate_json(data) 

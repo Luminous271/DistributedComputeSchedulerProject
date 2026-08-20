@@ -22,8 +22,9 @@ def create_job(request: JobRequest):
         priority=request.priority,
         created_at=datetime.now(timezone.utc),
     )
-
-    # enqueue the job in the stream
+    # save a job object to handel job lifecycle
+    queue.save_job(job)
+    # enqueue the job id into the stream
     queue.enqueue(job)
 
     return job

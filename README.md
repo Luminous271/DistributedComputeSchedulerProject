@@ -50,23 +50,55 @@ Modern cloud platforms execute large numbers of computational jobs across distri
                          │    Engine      │
                          └────────────────┘
 ```
-# What is a Job?
-- Version 0.1.0
-```
-Job
-├── id - id number
-├── type - what type of computation should be performed
-├── payload - input to the computation
-├── priority - scheduling priority
-├── status - current state of lifecycle
-├── created_at - when it was submitted
-├── started_at - when execution began
-├── completed_at - when execution finished
-├── worker_id - what worker is current executing it
-├── retry_count - number of execution attempts
-└── result - output of computation
-```
-- We want a unit of computation submitted to the final distributed compute system.
-- Life-Cycle:
-- QUEUED -> RUNNING -> COMPLETED or (FAILED -> RETRYING -> QUEUED) or CANCELD
- 
+### Job Model
+
+The scheduler separates job submission from the internal representation of
+a job.
+
+#### `JobRequest`
+
+`JobRequest` represents the data provided by a client when submitting a new
+job. It contains only the information necessary to create the job:
+
+- `type` — type of computation to perform
+- `payload` — parameters required by the computation
+- `priority` — scheduling priority from 0–10
+
+Fields such as job ID, timestamps, worker assignment, and execution results
+are intentionally excluded because these values are generated or managed by
+the scheduler. This is what the client can use to request jobs.
+
+#### `Job`
+
+`Job` represents the complete lifecycle of a job within the scheduler.
+
+In addition to the request data, it contains system-managed information such
+as:
+
+- `id` — unique identifier assigned by the scheduler
+- `status` — current execution state
+- `created_at` — time the job was submitted
+- `started_at` — time execution began
+- `completed_at` — time execution finished
+- `worker_id` — worker currently responsible for the job
+- `retry_count` — number of execution attempts
+- `result` — output produced by the job
+
+The `Job` model therefore acts as the scheduler's internal representation
+of a job and provides the information needed to track its execution.
+
+#### `JobStatus`
+
+`JobStatus` is an enumeration defining the valid states in a job's lifecycle:
+
+```text
+QUEUED → RUNNING → COMPLETED
+            │
+            ▼
+          FAILED
+            │
+            ▼
+         RETRYING
+            │
+            ▼
+          QUEUED
