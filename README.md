@@ -13,9 +13,46 @@ Modern cloud platforms execute large numbers of computational jobs across distri
 
 # ARCHITECTURE
 
+### System Overview
 
+```text
+                         ┌──────────────────┐
+                         │      Client      │
+                         │  REST / Web UI   │
+                         └────────┬─────────┘
+                                  │
+                                  ▼
+                         ┌──────────────────┐
+                         │     FastAPI      │
+                         │   API Server     │
+                         └────────┬─────────┘
+                                  │
+                         Submit / Query Jobs
+                                  │
+                                  ▼
+                    ┌─────────────────────────┐
+                    │          Redis          │
+                    │       Job Queue         │
+                    │      Redis Streams      │
+                    └────────────┬────────────┘
+                                 │
+                    ┌────────────┼────────────┐
+                    │            │            │
+                    ▼            ▼            ▼
+              ┌──────────┐ ┌──────────┐ ┌──────────┐
+              │ Worker 1 │ │ Worker 2 │ │ Worker N │
+              └────┬─────┘ └────┬─────┘ └────┬─────┘
+                   │             │             │
+                   └─────────────┼─────────────┘
+                                 ▼
+                         ┌────────────────┐
+                         │ Job Execution  │
+                         │    Engine      │
+                         └────────────────┘
+```
 # What is a Job?
 - Version 0.1.0
+```
 Job
 ├── id - id number
 ├── type - what type of computation should be performed
@@ -28,6 +65,7 @@ Job
 ├── worker_id - what worker is current executing it
 ├── retry_count - number of execution attempts
 └── result - output of computation
+```
 - We want a unit of computation submitted to the final distributed compute system.
 - Life-Cycle:
 - QUEUED -> RUNNING -> COMPLETED or (FAILED -> RETRYING -> QUEUED) or CANCELD
