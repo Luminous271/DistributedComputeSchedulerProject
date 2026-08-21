@@ -2,10 +2,12 @@ from job_queue.redis_queue import RedisQueue
 import json
 from .executer import execute_job
 
-from datetime import datetime, timezone
-from scheduler.models import JobStatus
+from datetime import datetime, timezone, timedelta
+from scheduler.models import Job, JobStatus
 import threading
 import time
+from scheduler.retry_manager import RetryManager
+
 
 # worker continuously asks redis, is there work? if so process job or no wait.
 class Worker:
@@ -18,12 +20,11 @@ class Worker:
             target=self.heartbeat_loop,
             daemon=True)
         heartbeat_thread.start()
+        self.retry_manager = RetryManager(self.queue)
 
     def run(self):
         print(f"Worker {self.worker_id} started")
         while True:
-            # use worker ids so redis knows which worker recieved what.
-            self.recover_jobs()
             messages = self.queue.consume(consumer_name=self.worker_id)
             if not messages:
                 continue
@@ -32,6 +33,7 @@ class Worker:
                     self.process_job(message_id, data)
 
     def process_job(self, message_id: str, data: dict):
+        print(data)
         job_id = data["job_id"]
         job = self.queue.get_job(job_id)
         if job is None:
@@ -42,6 +44,7 @@ class Worker:
         job.status = JobStatus.RUNNING
         job.started_at = datetime.now(timezone.utc)
         job.worker_id = self.worker_id
+        job.message_id = message_id
         self.queue.save_job(job)
 
         print( f"[{self.worker_id}] " f"Processing job {job.id}")
@@ -53,51 +56,41 @@ class Worker:
                 job.type,
                 job.payload,
             )
+            current_job = self.queue.get_job(job.id)
+            if current_job is None:
+                return
+            if current_job.status != JobStatus.RUNNING:
+                print(
+                    f"[{self.worker_id}] "
+                    f"Job {job.id} is no longer running. "
+                    f"Ignoring result."
+                )
+                return
 
             # Mark job as COMPLETED
-            job.status = JobStatus.COMPLETED
-            job.completed_at = datetime.now(timezone.utc)
-            job.result = result
-            self.queue.save_job(job)
-
+            current_job.status = JobStatus.COMPLETED
+            current_job.completed_at = datetime.now(timezone.utc)
+            current_job.result = result
+            self.queue.save_job(current_job)
             self.queue.ack(message_id)
+
             print(
                 f"[{self.worker_id}] "
                 f"Completed job {job.id}: {result}"
             )
         except Exception as e:
-            if job.retry_count < job.max_retries : 
-                job.retry_count += 1
-                job.status = JobStatus.RETRYING
-                job.result = {"error": str(e)}  
-                self.queue.retry(job, message_id)
-                print(
-                    f"[{self.worker_id}] "
-                    f"Retrying job {job.id} "
-                    f"({job.retry_count}/{job.max_retries})"
-                )
-  
-            else : 
-                # Mark job as FAILED
-                job.status = JobStatus.FAILED
-                job.completed_at = datetime.now(timezone.utc)
-                job.result = {"error": str(e)}
+            self.retry_manager.schedule_retry(
+                job,
+                message_id,
+                e,
+            )
 
-                self.queue.save_job(job)
-
-                self.queue.ack(message_id)
-
-                print(
-                    f"[{self.worker_id}] "
-                    f"Failed job {job.id}: {e}"
-                )
     def recover_jobs(self) :
-        result = self.queue.claim_pending(
+        messages = self.queue.claim_pending(
             consumer_name=self.worker_id,
-            min_idle_ms=10_000,
+            min_idle_ms=100_000,
             count=10,
         )
-        messages = result[1]
         for message_id, data in messages:
             print(
                 f"[{self.worker_id}] "
@@ -109,5 +102,3 @@ class Worker:
         while True :
             self.queue.heartbeat_worker(self.worker_id)
             time.sleep(5)
-
-    

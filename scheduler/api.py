@@ -20,6 +20,7 @@ def create_job(request: JobRequest):
         type=request.type,
         payload=request.payload,
         priority=request.priority,
+        timeout_seconds=request.timeout_seconds,
         created_at=datetime.now(timezone.utc),
     )
     # save a job object to handel job lifecycle

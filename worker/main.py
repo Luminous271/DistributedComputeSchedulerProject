@@ -3,7 +3,6 @@ from worker.worker import Worker
 
 def main():
     parser = argparse.ArgumentParser() # pythons argument parser, automatically parser arumgnets when you run python script
-
     # add expected arguments, using this tag
     parser.add_argument(
         "--worker-id",

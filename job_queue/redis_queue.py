@@ -1,11 +1,13 @@
 import json
 import redis
-from scheduler.models import Job
+from scheduler.models import Job, JobStatus
 import time
 
 class RedisQueue:
     STREAM_NAME = "jobs"
     CONSUMER_GROUP = "workers"
+    RETRY_SET = "retry_jobs"
+
     def __init__(self, host: str = "localhost", port: int = 6379):
         self.client = redis.Redis(
             host=host,
@@ -30,11 +32,24 @@ class RedisQueue:
         )
         return message_id
 
-    def retry(self, job: Job, message_id) : 
-        self.save_job(job)
-        self.enqueue(job)
-        self.ack(message_id)
-
+    def schedule_retry(self, job: Job):
+        self.client.zadd(
+            self.RETRY_SET,
+            {job.id: job.retry_at.timestamp()}
+        )
+    def get_ready_retries(self):
+        now = time.time()
+        return self.client.zrangebyscore(
+            self.RETRY_SET,
+            "-inf",
+            now,
+        )
+    def remove_retry(self, job_id: str):
+        self.client.zrem(
+            self.RETRY_SET,
+            job_id,
+        )
+    
     # redis streams are an append only-log. Xread says give me messages from this stream. 
     # The block is If there isn't a job right now, wait up to 5 seconds 
     # rather than constantly hammering Redis for messages. Blocking consumption.
@@ -84,7 +99,7 @@ class RedisQueue:
                         consumer_name: str,
                         min_idle_ms: int = 60000,
                         count: int = 10) : 
-        return self.client.xautoclaim(
+        result = self.client.xautoclaim(
             self.STREAM_NAME,
             self.CONSUMER_GROUP,
             consumer_name,
@@ -92,6 +107,8 @@ class RedisQueue:
             "0-0",
             count=count,
         )
+        if not result : 
+            return []
         return result[1]
     # create a hashset of worker records
     def register_worker(self, worker_id: str) : 
@@ -156,3 +173,14 @@ class RedisQueue:
             max="+",
             count=count )
         return result
+    def get_running_jobs(self) -> list[Job]:
+        jobs = []
+        keys = self.client.keys("job:*")
+        for key in keys:
+            data = self.client.get(key)
+            if data is None:
+                continue
+            job = Job.model_validate_json(data)
+            if job.status == JobStatus.RUNNING:
+                jobs.append(job)
+        return jobs

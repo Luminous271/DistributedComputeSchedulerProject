@@ -1,6 +1,8 @@
 import time
-
+from datetime import datetime, timezone
 from job_queue.redis_queue import RedisQueue
+from scheduler.retry_manager import RetryManager
+from scheduler.models import Job, JobStatus
 
 class WorkerMonitor:
     def __init__(self, queue: RedisQueue, check_interval: int = 5, 
@@ -8,6 +10,7 @@ class WorkerMonitor:
         self.queue = queue
         self.check_interval = check_interval
         self.heartbeat_timeout = heartbeat_timeout
+        self.retry_manager = RetryManager(queue)
 
     # check workers for any deaths
     def check_workers(self):
@@ -44,6 +47,7 @@ class WorkerMonitor:
     def run(self):
             while True:
                 self.check_workers()
+                self.check_job_timeouts()
                 time.sleep(self.check_interval)
 
     def recover_dead_worker(self, dead_worker_id: str, replacement_worker_id: str):
@@ -85,3 +89,29 @@ class WorkerMonitor:
                 return worker_id
 
         return None
+    
+    def check_job_timeouts(self) :
+            running_jobs = self.queue.get_running_jobs()
+            now = datetime.now(timezone.utc)
+            for job in running_jobs:
+                if job.timeout_seconds is None:
+                    continue
+                elapsed = now - job.started_at
+                if elapsed.total_seconds() > job.timeout_seconds:
+                    print(
+                        f"[Monitor] "
+                        f"Job {job.id} timed out"
+                    )
+                    # handle timeout
+                    self.handle_timeout(job)
+
+    def handle_timeout(self, job: Job):
+        error = TimeoutError(
+            f"Job exceeded timeout of "
+            f"{job.timeout_seconds} seconds"
+        )
+
+        self.retry_manager.schedule_timeout(
+            job,
+            error,
+        )

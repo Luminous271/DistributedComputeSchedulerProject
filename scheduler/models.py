@@ -11,11 +11,17 @@ class JobStatus(str, Enum):
     COMPLETED = "completed"
     FAILED = "failed"
     RETRYING = "retrying"
+    TIMED_OUT = "timed_out"
 
 class JobRequest(BaseModel):
     type: str
     payload: dict[str, Any]
     priority: int = Field(default=0, ge=0, le=10)
+    timeout_seconds: int | None = Field(
+        default=60,
+        gt=0,
+        le=3600,
+    )
 
 # class defining what a Job has/is 
 class Job(BaseModel):
@@ -32,3 +38,10 @@ class Job(BaseModel):
     result: Any | None = None
     max_retries: int = 3
     retry_count: int = 0
+    retry_at: datetime | None = None
+    message_id: str | None = None
+    timeout_seconds: int | None = Field(
+            default=60,
+            gt=0,
+            le=3600,
+        )
