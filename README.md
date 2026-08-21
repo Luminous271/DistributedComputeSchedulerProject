@@ -102,3 +102,20 @@ QUEUED → RUNNING → COMPLETED
             │
             ▼
           QUEUED
+```
+```text
+Redis Stream
+    │
+    └── Has this work message been acknowledged?
+                │
+                ▼
+             XACK
+
+
+Job Record
+    │
+    └── What happened to the actual job?
+                │
+                ▼
+       QUEUED/RUNNING/COMPLETED/FAILED
+```

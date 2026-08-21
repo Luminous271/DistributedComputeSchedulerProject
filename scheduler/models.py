@@ -30,3 +30,5 @@ class Job(BaseModel):
     worker_id: str | None = None
     retry_count: int = 0
     result: Any | None = None
+    max_retries: int = 3
+    retry_count: int = 0

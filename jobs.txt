@@ -1,0 +1,15 @@
+{
+  "type": "fail",
+  "payload": {
+    "message": "intentional failure"
+  },
+  "priority": 5
+}
+
+{
+  "type": "sleep",
+  "payload": {
+    "duration_ms": 5000
+  },
+  "priority": 5
+}
