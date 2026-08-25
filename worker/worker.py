@@ -1,12 +1,12 @@
 from job_queue.redis_queue import RedisQueue
 import json
-from .executer import execute_job
 
 from datetime import datetime, timezone, timedelta
 from scheduler.models import Job, JobStatus
 import threading
 import time
 from scheduler.retry_manager import RetryManager
+from worker.execution_controller import execute_with_timeout
 
 
 # worker continuously asks redis, is there work? if so process job or no wait.
@@ -25,6 +25,8 @@ class Worker:
     def run(self):
         print(f"Worker {self.worker_id} started")
         while True:
+            # use worker ids so redis knows which worker recieved what.
+            self.recover_jobs()
             messages = self.queue.consume(consumer_name=self.worker_id)
             if not messages:
                 continue
@@ -51,11 +53,13 @@ class Worker:
 
         try:
             # Execute job
-            # Execute the job
-            result = execute_job(
+            result = execute_with_timeout(
                 job.type,
                 job.payload,
+                job.timeout_seconds,
             )
+
+
             current_job = self.queue.get_job(job.id)
             if current_job is None:
                 return
