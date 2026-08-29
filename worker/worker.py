@@ -1,8 +1,6 @@
 from job_queue.redis_queue import RedisQueue
-import json
-
-from datetime import datetime, timezone, timedelta
-from scheduler.models import Job, JobStatus
+from datetime import datetime, timezone
+from scheduler.models import JobStatus
 import threading
 import time
 from scheduler.retry_manager import RetryManager
@@ -13,17 +11,33 @@ from worker.execution_controller import execute_with_timeout
 class Worker:
     def __init__(self, worker_id: str):
         self.worker_id = worker_id
+        # RedisQueue object allows a worker to communicate with redis 
         self.queue = RedisQueue()
+
+        # create a consumer group if it does not already exist 
         self.queue.create_consumer_group()
+        # register worker
         self.queue.register_worker(worker_id)
+
+        # using python threading, we can  start the heart beat loop
+        # remember that threads are I/O bound and job procesesing are I/O bound too. 
+        # heartbeat thread can tick reliably even when the main 
+        # worker thread is stalled with something (decoupled from logic)
         heartbeat_thread = threading.Thread(
             target=self.heartbeat_loop,
-            daemon=True)
+            daemon=True) # marking the thread as a daemon means it wont prevent the proces from exiting
+    
+        # start the thread     
         heartbeat_thread.start()
+
+        # the retry manager managees retrying jobs that failed or timed-out
         self.retry_manager = RetryManager(self.queue)
 
+    # the main loop
     def run(self):
         print(f"Worker {self.worker_id} started")
+        
+        # continue until terminated
         while True:
             # use worker ids so redis knows which worker recieved what.
             self.recover_jobs()
