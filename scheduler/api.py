@@ -12,7 +12,7 @@ app = FastAPI(
 
 queue = RedisQueue()
 
-# POST endpoint
+# POST endpoint to add jobs
 @app.post("/jobs", response_model=Job)
 def create_job(request: JobRequest):
     job = Job(

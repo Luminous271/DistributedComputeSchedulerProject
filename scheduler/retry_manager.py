@@ -3,11 +3,12 @@ from datetime import datetime, timezone, timedelta
 from job_queue.redis_queue import RedisQueue    
 import time
 
+# class that handels all worker retrys 
 class RetryManager:
-
     def __init__(self, queue: RedisQueue):
         self.queue = queue
 
+    # any jobs that are actively retrying
     def process_ready_retries(self):
         job_ids = self.queue.get_ready_retries()
         for job_id in job_ids:
@@ -29,6 +30,7 @@ class RetryManager:
                 f"Requeued job {job.id}"
             )
 
+    # schedule a retry, update retry count
     def schedule_retry(self, job: Job, message_id: str, e: Exception) -> bool:
         job.retry_count += 1
         job.result = {"error": str(e)}
@@ -71,6 +73,7 @@ class RetryManager:
         # We'll put it into the delayed-retry structure here.
         return True
 
+    # deprecated function, timeouts are handeled by the execution controller
     def schedule_timeout(self, job: Job, error: Exception) -> bool:
         current_job = self.queue.get_job(job.id)
 
@@ -99,6 +102,7 @@ class RetryManager:
 
         return True
 
+    # run the retry manager
     def run(self):
         while True:
             self.process_ready_retries()

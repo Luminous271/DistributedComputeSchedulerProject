@@ -4,12 +4,10 @@ Distributed Compute Scheduler
 
 A fault-tolerant distributed compute platform for scheduling heterogeneous workloads across dynamically scaled workers.
 
-# INTRODUCTION
-This is a distributed systems project I made to learn Dsitributed systems. It is something I used to strengthen my docker and SWE skills.
-
 # MOTIVATION
 
 Modern cloud platforms execute large numbers of computational jobs across distributed worker nodes. This project implements a simplified batch-computing system to explore scheduling, fault tolerance, workload distribution, and horizontal scaling.
+
 
 # ARCHITECTURE
 
@@ -50,10 +48,10 @@ Modern cloud platforms execute large numbers of computational jobs across distri
                          │    Engine      │
                          └────────────────┘
 ```
-### Job Model
+### Job Models
 
 The scheduler separates job submission from the internal representation of
-a job.
+a job with a job-request model.
 
 #### `JobRequest`
 
@@ -63,6 +61,7 @@ job. It contains only the information necessary to create the job:
 - `type` — type of computation to perform
 - `payload` — parameters required by the computation
 - `priority` — scheduling priority from 0–10
+- `timeout_seconds` — how many seconds the user wants the job to run for 
 
 Fields such as job ID, timestamps, worker assignment, and execution results
 are intentionally excluded because these values are generated or managed by
@@ -83,6 +82,10 @@ as:
 - `worker_id` — worker currently responsible for the job
 - `retry_count` — number of execution attempts
 - `result` — output produced by the job
+- `retry_at` — what time a worker attempted a retry
+- `max_retries` — maximum amount of retries
+- `retry_count` — how many retries have already happened
+- `message_id` — keep track of redis message as well. Links 2 identity systems. Acking requires the message id
 
 The `Job` model therefore acts as the scheduler's internal representation
 of a job and provides the information needed to track its execution.
@@ -92,7 +95,7 @@ of a job and provides the information needed to track its execution.
 `JobStatus` is an enumeration defining the valid states in a job's lifecycle:
 
 ```text
-QUEUED → RUNNING → COMPLETED
+QUEUED → RUNNING → COMPLETED or TIMED_OUT
             │
             ▼
           FAILED
@@ -103,6 +106,8 @@ QUEUED → RUNNING → COMPLETED
             ▼
           QUEUED
 ```
+### SOME EXTRA DOCUMENTATION
+- I keep a record of the jobs separate from the redis stream so we can see the state of the jobs. 
 ```text
 Redis Stream
     │
@@ -110,7 +115,6 @@ Redis Stream
                 │
                 ▼
              XACK
-
 
 Job Record
     │

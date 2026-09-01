@@ -73,6 +73,7 @@ class WorkerMonitor:
                     f"{replacement_worker_id} claimed "
                     f"job {data['job_id']}"
                 )
+    # get all health workers (are they alive)
     def get_healthy_worker(self, exclude: str):
         workers = self.queue.get_workers()
 

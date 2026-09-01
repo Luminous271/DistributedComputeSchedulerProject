@@ -40,10 +40,14 @@ class Worker:
         # continue until terminated
         while True:
             # use worker ids so redis knows which worker recieved what.
+
+            # recover any jobs that have been idle
             self.recover_jobs()
+            # get any new messages
             messages = self.queue.consume(consumer_name=self.worker_id)
             if not messages:
                 continue
+            # process the jobs
             for stream_name, entries in messages:
                 for message_id, data in entries:
                     self.process_job(message_id, data)
@@ -52,6 +56,8 @@ class Worker:
         print(data)
         job_id = data["job_id"]
         job = self.queue.get_job(job_id)
+
+        # check if the job exsists still
         if job is None:
             print(f"[{self.worker_id}] Job {job_id} not found")
             return
@@ -73,7 +79,17 @@ class Worker:
                 job.timeout_seconds,
             )
 
+            # current job is a copy of the job that was executed, between the time
+            # job and the moment exectute_with_timeout happens, real time passes.
+            # This could be longer than the job's timeout seconds. During that time
+            # we should keep track of the status of the job in the redis job store.
+            # just a safety check as something outside of this function might change
+            # the redis queue
 
+            # In short: current_job exists to re-validate ownership/state before committing results, 
+            # protecting against race conditions 
+            # from concurrent workers or timeout/reassignment logic that 
+            # could have altered the job while it was executing.
             current_job = self.queue.get_job(job.id)
             if current_job is None:
                 return
@@ -115,7 +131,7 @@ class Worker:
                 f"Recovered job {data['job_id']}"
             )
             self.process_job(message_id, data)
-
+    # heartbeat loop, starts the thread that sends the worker monitor a heart beat
     def heartbeat_loop(self) :
         while True :
             self.queue.heartbeat_worker(self.worker_id)
